@@ -1,4 +1,39 @@
-.vs
-out
+# CMake/build output
+out/
+out-local/
+build/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+install_manifest.txt
+/bin/
+/lib/
+
+# Visual Studio local state
+.vs/
 CMakeSettings.json
+*.vcxproj.user
+*.suo
+*.user
+*.userosscache
+*.sdf
+*.opensdf
+*.VC.db
+*.VC.VC.opendb
+
+# Unity local project artifacts
+Library/
+Temp/
+Obj/
+Logs/
+UserSettings/
+*.sln.DotSettings.user
+
+# QA output folders not tracked as baselines
+Test/Reports/
+
+# OS files
 .DS_Store
+Thumbs.db
+
