@@ -40,11 +40,11 @@
 /*****************************
 Local definitions
 *****************************/
-#define DAZ_TO_UNITY_PLUGIN_NAME "DazToUnity"
+#define DAZ_TO_UNITY_PLUGIN_NAME "DazToUnityFork"
 
 #include "dzbridge.h"
 
-DzUnityDialog::DzUnityDialog(QWidget* parent) :
+DzUnityForkDialog::DzUnityForkDialog(QWidget* parent) :
 	 DzBridgeDialog(parent, DAZ_TO_UNITY_PLUGIN_NAME)
 {
 	 projectEdit = nullptr;
@@ -53,7 +53,7 @@ DzUnityDialog::DzUnityDialog(QWidget* parent) :
 	 assetsFolderButton = nullptr;
 	 installUnityFilesCheckBox = nullptr;
 
-	 settings = new QSettings("Daz 3D", "DazToUnity");
+	 settings = new QSettings("Daz 3D", "DazToUnityFork");
 
 	 // Declarations
 	 int margin = style()->pixelMetric(DZ_PM_GeneralMargin);
@@ -62,9 +62,9 @@ DzUnityDialog::DzUnityDialog(QWidget* parent) :
 
 	 // Set the dialog title
 #ifdef _PRE_RELEASE
-	 setWindowTitle(tr("DazToUnity Bridge %1 v%2.%3.%4 Pre-Release Build").arg(PLUGIN_MAJOR).arg(PLUGIN_MINOR).arg(PLUGIN_REV).arg(PLUGIN_BUILD));
+	 setWindowTitle(tr("DazToUnity Fork Bridge %1 v%2.%3.%4 Pre-Release Build").arg(PLUGIN_MAJOR).arg(PLUGIN_MINOR).arg(PLUGIN_REV).arg(PLUGIN_BUILD));
 #else
-	 setWindowTitle(tr("DazToUnity Bridge %1 v%2.%3").arg(PLUGIN_MAJOR).arg(PLUGIN_MINOR).arg(PLUGIN_REV));
+	 setWindowTitle(tr("DazToUnity Fork Bridge %1 v%2.%3").arg(PLUGIN_MAJOR).arg(PLUGIN_MINOR).arg(PLUGIN_REV));
 #endif
 
 	 // Welcome String for Setup/Welcome Mode
@@ -88,7 +88,7 @@ DzUnityDialog::DzUnityDialog(QWidget* parent) :
 </div>\
 ");
 	 m_WelcomeLabel->setText(sSetupModeString);
-	 QString sBridgeVersionString = tr("Daz To Unity Bridge %1 v%2.%3.%4").arg(PLUGIN_MAJOR).arg(PLUGIN_MINOR).arg(PLUGIN_REV).arg(PLUGIN_BUILD);
+	 QString sBridgeVersionString = tr("DazToUnity Fork Bridge %1 v%2.%3.%4").arg(PLUGIN_MAJOR).arg(PLUGIN_MINOR).arg(PLUGIN_REV).arg(PLUGIN_BUILD);
 	 setBridgeVersionStringAndLabel(sBridgeVersionString);
 
 	// Rename Animation Options Box
@@ -169,7 +169,7 @@ DzUnityDialog::DzUnityDialog(QWidget* parent) :
 	 }
 }
 
-bool DzUnityDialog::loadSavedSettings()
+bool DzUnityForkDialog::loadSavedSettings()
 {
 	DzBridgeDialog::loadSavedSettings();
 
@@ -181,20 +181,20 @@ bool DzUnityDialog::loadSavedSettings()
 	}
 	else
 	{
-		QString DefaultPath = QDesktopServices::storageLocation(QDesktopServices::DocumentsLocation) + QDir::separator() + "DazToUnity";
+		QString DefaultPath = QDesktopServices::storageLocation(QDesktopServices::DocumentsLocation) + QDir::separator() + "DazToUnityFork";
 		assetsFolderEdit->setText(DefaultPath);
 	}
 
 	return true;
 }
 
-void DzUnityDialog::resetToDefaults()
+void DzUnityForkDialog::resetToDefaults()
 {
 	m_bDontSaveSettings = true;
 
 	DzBridgeDialog::resetToDefaults();
 
-	QString DefaultPath = QDesktopServices::storageLocation(QDesktopServices::DocumentsLocation) + QDir::separator() + "DazToUnity";
+	QString DefaultPath = QDesktopServices::storageLocation(QDesktopServices::DocumentsLocation) + QDir::separator() + "DazToUnityFork";
 	assetsFolderEdit->setText(DefaultPath);
 
 	DzNode* Selection = dzScene->getPrimarySelection();
@@ -220,7 +220,7 @@ void DzUnityDialog::resetToDefaults()
 	m_bDontSaveSettings = false;
 }
 
-void DzUnityDialog::HandleAssetFolderChanged(const QString& directoryName)
+void DzUnityForkDialog::HandleAssetFolderChanged(const QString& directoryName)
 {
 	// DB (2021-05-15): Check for presence of Daz3D folder, and set installUnityFiles if not present
 	if (QDir(directoryName + QDir::separator() + "Daz3D").exists())
@@ -241,7 +241,7 @@ void DzUnityDialog::HandleAssetFolderChanged(const QString& directoryName)
 
 }
 
-void DzUnityDialog::HandleSelectAssetsFolderButton()
+void DzUnityForkDialog::HandleSelectAssetsFolderButton()
 {
 	 // DB (2021-05-15): prepopulate with existing folder string
 	 QString directoryName = "";
@@ -295,19 +295,19 @@ void DzUnityDialog::HandleSelectAssetsFolderButton()
 	 return;
 }
 
-void DzUnityDialog::HandleInstallUnityFilesCheckBoxChange(int state)
+void DzUnityForkDialog::HandleInstallUnityFilesCheckBoxChange(int state)
 {
 	 settings->setValue("InstallUnityFiles", state == Qt::Checked);
 }
 
-void DzUnityDialog::HandleAssetTypeComboChange(const QString& assetType)
+void DzUnityForkDialog::HandleAssetTypeComboChange(const QString& assetType)
 {
 	// DB 2023-Aug-10: Override default Base class behavior which hides Animation options behind Experimental Options mode
 	animationSettingsGroupBox->setVisible(assetType == "Animation" || assetType == "Pose");
 
 }
 
-void DzUnityDialog::HandleAssetTypeComboChange(int state)
+void DzUnityForkDialog::HandleAssetTypeComboChange(int state)
 {
 	QString assetNameString = assetNameEdit->text();
 
@@ -359,7 +359,7 @@ void DzUnityDialog::HandleAssetTypeComboChange(int state)
 
 }
 
-void DzUnityDialog::HandleTargetPluginInstallerButton()
+void DzUnityForkDialog::HandleTargetPluginInstallerButton()
 {
 	if (m_wTargetPluginInstaller == nullptr) return;
 
@@ -414,7 +414,7 @@ void DzUnityDialog::HandleTargetPluginInstallerButton()
 	if (bIsValidProjectFolder == false)
 	{
 		// Warning, not a valid plugins folder path
-		auto userChoice = QMessageBox::warning(0, "Daz To Unity Bridge",
+		auto userChoice = QMessageBox::warning(0, "DazToUnity Fork Bridge",
 			tr("The selected folder is not a valid Unity Project folder.  Please select a \
 valid Unity Project folder.\n\nYou can choose to Abort and select a new folder, \
 or Ignore this error and install the plugin anyway."),
@@ -530,7 +530,7 @@ Unity Plugin to:</h4>") +
 	return;
 }
 
-void DzUnityDialog::HandleOpenIntermediateFolderButton(QString sFolderPath)
+void DzUnityForkDialog::HandleOpenIntermediateFolderButton(QString sFolderPath)
 {
 	// Open Selected Unity Project Folder
 	QString assetFolder = assetsFolderEdit->text().replace("\\", "/") + "/Daz3D";
@@ -538,7 +538,7 @@ void DzUnityDialog::HandleOpenIntermediateFolderButton(QString sFolderPath)
 }
 
 // Return TRUE if Project Folder Path is Valid
-bool DzUnityDialog::IsValidProjectFolder(QString sProjectFolderPath)
+bool DzUnityForkDialog::IsValidProjectFolder(QString sProjectFolderPath)
 {
 	if (QDir(sProjectFolderPath).exists() == false)
 		return false;
@@ -568,7 +568,7 @@ bool DzUnityDialog::IsValidProjectFolder(QString sProjectFolderPath)
 	return false;
 }
 
-void DzUnityDialog::setDisabled(bool bDisabled)
+void DzUnityForkDialog::setDisabled(bool bDisabled)
 {
 	DzBridgeDialog::setDisabled(bDisabled);
 

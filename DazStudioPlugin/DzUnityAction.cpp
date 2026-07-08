@@ -37,8 +37,8 @@
 
 #include "dzbridge.h"
 
-DzUnityAction::DzUnityAction() :
-	DzBridgeAction(tr("Daz To &Unity"), tr("Send the selected node to Unity."))
+DzUnityForkAction::DzUnityForkAction() :
+	DzBridgeAction(tr("DazToUnity Fork"), tr("Send the selected node to Unity with DazToUnity Fork."))
 {
 	m_nNonInteractiveMode = 0;
 	m_sAssetType = QString("SkeletalMesh");
@@ -51,7 +51,7 @@ DzUnityAction::DzUnityAction() :
 
 }
 
-bool DzUnityAction::createUI()
+bool DzUnityForkAction::createUI()
 {
 	// Check if the main window has been created yet.
 	// If it hasn't, alert the user and exit early.
@@ -76,11 +76,11 @@ bool DzUnityAction::createUI()
 	 // Create the dialog
 	if (!m_bridgeDialog)
 	{
-		m_bridgeDialog = new DzUnityDialog(mw);
+		m_bridgeDialog = new DzUnityForkDialog(mw);
 	}
 	else
 	{
-		DzUnityDialog* unityDialog = qobject_cast<DzUnityDialog*>(m_bridgeDialog);
+		DzUnityForkDialog* unityDialog = qobject_cast<DzUnityForkDialog*>(m_bridgeDialog);
 		if (unityDialog)
 		{
 			unityDialog->resetToDefaults();
@@ -94,7 +94,7 @@ bool DzUnityAction::createUI()
 	return true;
 }
 
-void DzUnityAction::executeAction()
+void DzUnityForkAction::executeAction()
 {
 	// CreateUI() disabled for debugging -- 2022-Feb-25
 	/*
@@ -141,7 +141,7 @@ void DzUnityAction::executeAction()
 	// Create the dialog
 	if (m_bridgeDialog == nullptr)
 	{
-		m_bridgeDialog = new DzUnityDialog(mw);
+		m_bridgeDialog = new DzUnityForkDialog(mw);
 	}
 	else
 	{
@@ -197,7 +197,7 @@ void DzUnityAction::executeAction()
 		readGui(m_bridgeDialog);
 
 		// Read Custom GUI values
-		DzUnityDialog* unityDialog = qobject_cast<DzUnityDialog*>(m_bridgeDialog);
+		DzUnityForkDialog* unityDialog = qobject_cast<DzUnityForkDialog*>(m_bridgeDialog);
 		if (unityDialog)
 			m_bInstallUnityFiles = unityDialog->installUnityFilesCheckBox->isChecked();
 		// custom animation filename correction for Unity
@@ -228,7 +228,7 @@ void DzUnityAction::executeAction()
 		{
 			if (m_bInstallUnityFiles)
 			{
-				QMessageBox::information(0, "Daz To Unity Bridge",
+				QMessageBox::information(0, "DazToUnity Fork Bridge",
 					tr("Export phase from Daz Studio complete. Please switch to Unity to continue.\n\n\
 If Unity Import dialog does not appear, then please double-click the \"DazToUnity HDRP\" UnityPackage \
 file located in the Assets\\Daz3D\\Support\\ folder of your Unity Project."), QMessageBox::Ok);
@@ -239,7 +239,7 @@ file located in the Assets\\Daz3D\\Support\\ folder of your Unity Project."), QM
 			}
 			else
 			{
-				QMessageBox::information(0, "Daz To Unity Bridge",
+				QMessageBox::information(0, "DazToUnity Fork Bridge",
 					tr("Export phase from Daz Studio complete. Please switch to Unity to begin Import phase."), QMessageBox::Ok);
 			}
 		}
@@ -247,7 +247,7 @@ file located in the Assets\\Daz3D\\Support\\ folder of your Unity Project."), QM
 	}
 }
 
-QString DzUnityAction::createUnityFiles(bool replace)
+QString DzUnityForkAction::createUnityFiles(bool replace)
 {
 	if (!m_bInstallUnityFiles)
 		return "";
@@ -278,7 +278,7 @@ QString DzUnityAction::createUnityFiles(bool replace)
 	return destPathHDRP;
 }
 
-void DzUnityAction::writeConfiguration()
+void DzUnityForkAction::writeConfiguration()
 {
 	QString DTUfilename = m_sDestinationPath + m_sExportFilename + ".dtu";
 	QFile DTUfile(DTUfilename);
@@ -322,7 +322,7 @@ void DzUnityAction::writeConfiguration()
 }
 
 // Setup custom FBX export options
-void DzUnityAction::setExportOptions(DzFileIOSettings& ExportOptions)
+void DzUnityForkAction::setExportOptions(DzFileIOSettings& ExportOptions)
 {
 	ExportOptions.setBoolValue("doEmbed", false);
 	ExportOptions.setBoolValue("doDiffuseOpacity", false);
@@ -330,14 +330,14 @@ void DzUnityAction::setExportOptions(DzFileIOSettings& ExportOptions)
 
 }
 
-QString DzUnityAction::readGuiRootFolder()
+QString DzUnityForkAction::readGuiRootFolder()
 {
-	QString rootFolder = QDesktopServices::storageLocation(QDesktopServices::DocumentsLocation) + QDir::separator() + "DazToUnity";
+	QString rootFolder = QDesktopServices::storageLocation(QDesktopServices::DocumentsLocation) + QDir::separator() + "DazToUnityFork";
 
 	if (m_bridgeDialog)
 	{
 		QLineEdit* assetsFolderEdit = nullptr;
-		DzUnityDialog* unityDialog = qobject_cast<DzUnityDialog*>(m_bridgeDialog);
+		DzUnityForkDialog* unityDialog = qobject_cast<DzUnityForkDialog*>(m_bridgeDialog);
 
 		if (unityDialog)
 			assetsFolderEdit = unityDialog->getAssetsFolderEdit();

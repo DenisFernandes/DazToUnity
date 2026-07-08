@@ -6,7 +6,7 @@
 
 UnitTest_DzUnityDialog::UnitTest_DzUnityDialog()
 {
-	m_testObject = (QObject*) new DzUnityDialog();
+	m_testObject = (QObject*) new DzUnityForkDialog();
 }
 
 bool UnitTest_DzUnityDialog::runUnitTests()
@@ -26,56 +26,56 @@ bool UnitTest_DzUnityDialog::runUnitTests()
 bool UnitTest_DzUnityDialog::_DzBridgeUnityDialog(UnitTest::TestResult* testResult)
 {
 	bool bResult = true;
-	TRY_METHODCALL(new DzUnityDialog());
+	TRY_METHODCALL(new DzUnityForkDialog());
 	return bResult;
 }
 
 bool UnitTest_DzUnityDialog::getAssetsFolderEdit(UnitTest::TestResult* testResult)
 {
 	bool bResult = true;
-	TRY_METHODCALL(qobject_cast<DzUnityDialog*>(m_testObject)->getAssetsFolderEdit());
+	TRY_METHODCALL(qobject_cast<DzUnityForkDialog*>(m_testObject)->getAssetsFolderEdit());
 	return bResult;
 }
 
 bool UnitTest_DzUnityDialog::resetToDefaults(UnitTest::TestResult* testResult)
 {
 	bool bResult = true;
-	TRY_METHODCALL(qobject_cast<DzUnityDialog*>(m_testObject)->resetToDefaults());
+	TRY_METHODCALL(qobject_cast<DzUnityForkDialog*>(m_testObject)->resetToDefaults());
 	return bResult;
 }
 
 bool UnitTest_DzUnityDialog::loadSavedSettings(UnitTest::TestResult* testResult)
 {
 	bool bResult = true;
-	TRY_METHODCALL(qobject_cast<DzUnityDialog*>(m_testObject)->loadSavedSettings());
+	TRY_METHODCALL(qobject_cast<DzUnityForkDialog*>(m_testObject)->loadSavedSettings());
 	return bResult;
 }
 
 bool UnitTest_DzUnityDialog::HandleSelectAssetsFolderButton(UnitTest::TestResult* testResult)
 {
 	bool bResult = true;
-	TRY_METHODCALL(qobject_cast<DzUnityDialog*>(m_testObject)->HandleSelectAssetsFolderButton());
+	TRY_METHODCALL(qobject_cast<DzUnityForkDialog*>(m_testObject)->HandleSelectAssetsFolderButton());
 	return bResult;
 }
 
 bool UnitTest_DzUnityDialog::HandleInstallUnityFilesCheckBoxChange(UnitTest::TestResult* testResult)
 {
 	bool bResult = true;
-	TRY_METHODCALL(qobject_cast<DzUnityDialog*>(m_testObject)->HandleInstallUnityFilesCheckBoxChange(0));
+	TRY_METHODCALL(qobject_cast<DzUnityForkDialog*>(m_testObject)->HandleInstallUnityFilesCheckBoxChange(0));
 	return bResult;
 }
 
 bool UnitTest_DzUnityDialog::HandleAssetTypeComboChange(UnitTest::TestResult* testResult)
 {
 	bool bResult = true;
-	TRY_METHODCALL(qobject_cast<DzUnityDialog*>(m_testObject)->HandleAssetTypeComboChange(0));
+	TRY_METHODCALL(qobject_cast<DzUnityForkDialog*>(m_testObject)->HandleAssetTypeComboChange(0));
 	return bResult;
 }
 
 bool UnitTest_DzUnityDialog::HandleAssetFolderChanged(UnitTest::TestResult* testResult)
 {
 	bool bResult = true;
-	TRY_METHODCALL(qobject_cast<DzUnityDialog*>(m_testObject)->HandleAssetFolderChanged(""));
+	TRY_METHODCALL(qobject_cast<DzUnityForkDialog*>(m_testObject)->HandleAssetFolderChanged(""));
 	return bResult;
 }
 

@@ -11,11 +11,11 @@ class UnitTest_DzUnityAction;
 
 #include "dzbridge.h"
 
-class DzUnityAction : public DZ_BRIDGE_NAMESPACE::DzBridgeAction {
+class DzUnityForkAction : public DZ_BRIDGE_NAMESPACE::DzBridgeAction {
 	 Q_OBJECT
 	 Q_PROPERTY(bool InstallUnityFiles READ getInstallUnityFiles WRITE setInstallUnityFiles)
 public:
-	DzUnityAction();
+	DzUnityForkAction();
 
 	void setInstallUnityFiles(bool arg) { m_bInstallUnityFiles = arg; }
 	bool getInstallUnityFiles() { return m_bInstallUnityFiles; }

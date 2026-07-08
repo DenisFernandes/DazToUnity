@@ -2,8 +2,8 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
-set(DZ_PLUGIN_TGT_NAME dzunitybridge)
-set(DZ_PLUGIN_PROJECT_NAME "DzBridge-Unity")
+set(DZ_PLUGIN_TGT_NAME dzunitybridgefork)
+set(DZ_PLUGIN_PROJECT_NAME "DzBridge-Unity-Fork")
 
 include_directories(${COMMON_LIB_INCLUDE_DIR})
 

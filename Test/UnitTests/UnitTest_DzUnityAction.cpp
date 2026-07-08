@@ -6,7 +6,7 @@
 
 UnitTest_DzUnityAction::UnitTest_DzUnityAction()
 {
-	m_testObject = (QObject*) new DzUnityAction();
+	m_testObject = (QObject*) new DzUnityForkAction();
 }
 
 bool UnitTest_DzUnityAction::runUnitTests()
@@ -27,42 +27,42 @@ bool UnitTest_DzUnityAction::runUnitTests()
 bool UnitTest_DzUnityAction::_DzBridgeUnityAction(UnitTest::TestResult* testResult)
 {
 	bool bResult = true;
-	TRY_METHODCALL(new DzUnityAction());
+	TRY_METHODCALL(new DzUnityForkAction());
 	return bResult;
 }
 
 bool UnitTest_DzUnityAction::setInstallUnityFiles(UnitTest::TestResult* testResult)
 {
 	bool bResult = true;
-	TRY_METHODCALL(qobject_cast<DzUnityAction*>(m_testObject)->setInstallUnityFiles(false));
+	TRY_METHODCALL(qobject_cast<DzUnityForkAction*>(m_testObject)->setInstallUnityFiles(false));
 	return bResult;
 }
 
 bool UnitTest_DzUnityAction::getInstallUnityFiles(UnitTest::TestResult* testResult)
 {
 	bool bResult = true;
-	TRY_METHODCALL(qobject_cast<DzUnityAction*>(m_testObject)->getInstallUnityFiles());
+	TRY_METHODCALL(qobject_cast<DzUnityForkAction*>(m_testObject)->getInstallUnityFiles());
 	return bResult;
 }
 
 bool UnitTest_DzUnityAction::executeAction(UnitTest::TestResult* testResult)
 {
 	bool bResult = true;
-	TRY_METHODCALL(qobject_cast<DzUnityAction*>(m_testObject)->executeAction());
+	TRY_METHODCALL(qobject_cast<DzUnityForkAction*>(m_testObject)->executeAction());
 	return bResult;
 }
 
 bool UnitTest_DzUnityAction::createUI(UnitTest::TestResult* testResult)
 {
 	bool bResult = true;
-	TRY_METHODCALL(qobject_cast<DzUnityAction*>(m_testObject)->createUI());
+	TRY_METHODCALL(qobject_cast<DzUnityForkAction*>(m_testObject)->createUI());
 	return bResult;
 }
 
 bool UnitTest_DzUnityAction::writeConfiguration(UnitTest::TestResult* testResult)
 {
 	bool bResult = true;
-	TRY_METHODCALL(qobject_cast<DzUnityAction*>(m_testObject)->writeConfiguration());
+	TRY_METHODCALL(qobject_cast<DzUnityForkAction*>(m_testObject)->writeConfiguration());
 	return bResult;
 }
 
@@ -70,21 +70,21 @@ bool UnitTest_DzUnityAction::setExportOptions(UnitTest::TestResult* testResult)
 {
 	bool bResult = true;
 	DzFileIOSettings arg;
-	TRY_METHODCALL(qobject_cast<DzUnityAction*>(m_testObject)->setExportOptions(arg));
+	TRY_METHODCALL(qobject_cast<DzUnityForkAction*>(m_testObject)->setExportOptions(arg));
 	return bResult;
 }
 
 bool UnitTest_DzUnityAction::createUnityFiles(UnitTest::TestResult* testResult)
 {
 	bool bResult = true;
-	TRY_METHODCALL(qobject_cast<DzUnityAction*>(m_testObject)->createUnityFiles());
+	TRY_METHODCALL(qobject_cast<DzUnityForkAction*>(m_testObject)->createUnityFiles());
 	return bResult;
 }
 
 bool UnitTest_DzUnityAction::readGuiRootFolder(UnitTest::TestResult* testResult)
 {
 	bool bResult = true;
-	TRY_METHODCALL(qobject_cast<DzUnityAction*>(m_testObject)->readGuiRootFolder());
+	TRY_METHODCALL(qobject_cast<DzUnityForkAction*>(m_testObject)->readGuiRootFolder());
 	return bResult;
 }
 

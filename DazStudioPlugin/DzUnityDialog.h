@@ -11,24 +11,24 @@ class QComboBox;
 class QGroupBox;
 class QLabel;
 class QWidget;
-class DzUnityAction;
+class DzUnityForkAction;
 
 class UnitTest_DzUnityDialog;
 
 #include "dzbridge.h"
 
-class DzUnityDialog : public DZ_BRIDGE_NAMESPACE::DzBridgeDialog{
-	friend DzUnityAction;
+class DzUnityForkDialog : public DZ_BRIDGE_NAMESPACE::DzBridgeDialog{
+	friend DzUnityForkAction;
 	Q_OBJECT
 	Q_PROPERTY(QWidget* assetsFolderEdit READ getAssetsFolderEdit)
 public:
 	Q_INVOKABLE QLineEdit* getAssetsFolderEdit() { return assetsFolderEdit; }
 
 	/** Constructor **/
-	 DzUnityDialog(QWidget *parent=nullptr);
+	 DzUnityForkDialog(QWidget *parent=nullptr);
 
 	/** Destructor **/
-	virtual ~DzUnityDialog() {}
+	virtual ~DzUnityForkDialog() {}
 
 	Q_INVOKABLE void resetToDefaults() override;
 	Q_INVOKABLE bool loadSavedSettings() override;
