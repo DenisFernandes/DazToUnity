@@ -17,6 +17,9 @@ bool UnitTest_DzUnityDialog::runUnitTests()
 	RUNTEST(loadSavedSettings);
 	RUNTEST(HandleSelectAssetsFolderButton);
 	RUNTEST(HandleInstallUnityFilesCheckBoxChange);
+	RUNTEST(HandleExportStrandHairAlembicCheckBoxChange);
+	RUNTEST(HandleStrandHairBlenderExecutableChanged);
+	RUNTEST(HandleRunStrandHairBlenderBakeCheckBoxChange);
 	RUNTEST(HandleAssetTypeComboChange);
 	RUNTEST(HandleAssetFolderChanged);
 
@@ -62,6 +65,29 @@ bool UnitTest_DzUnityDialog::HandleInstallUnityFilesCheckBoxChange(UnitTest::Tes
 {
 	bool bResult = true;
 	TRY_METHODCALL(qobject_cast<DzUnityForkDialog*>(m_testObject)->HandleInstallUnityFilesCheckBoxChange(0));
+	return bResult;
+}
+
+bool UnitTest_DzUnityDialog::HandleExportStrandHairAlembicCheckBoxChange(UnitTest::TestResult* testResult)
+{
+	bool bResult = true;
+	TRY_METHODCALL(qobject_cast<DzUnityForkDialog*>(m_testObject)->HandleExportStrandHairAlembicCheckBoxChange(0));
+	TRY_METHODCALL(qobject_cast<DzUnityForkDialog*>(m_testObject)->HandleExportStrandHairAlembicCheckBoxChange(2));
+	return bResult;
+}
+
+bool UnitTest_DzUnityDialog::HandleStrandHairBlenderExecutableChanged(UnitTest::TestResult* testResult)
+{
+	bool bResult = true;
+	TRY_METHODCALL(qobject_cast<DzUnityForkDialog*>(m_testObject)->HandleStrandHairBlenderExecutableChanged("C:/Program Files/Blender Foundation/Blender 4.4/blender.exe"));
+	return bResult;
+}
+
+bool UnitTest_DzUnityDialog::HandleRunStrandHairBlenderBakeCheckBoxChange(UnitTest::TestResult* testResult)
+{
+	bool bResult = true;
+	TRY_METHODCALL(qobject_cast<DzUnityForkDialog*>(m_testObject)->HandleRunStrandHairBlenderBakeCheckBoxChange(0));
+	TRY_METHODCALL(qobject_cast<DzUnityForkDialog*>(m_testObject)->HandleRunStrandHairBlenderBakeCheckBoxChange(2));
 	return bResult;
 }
 

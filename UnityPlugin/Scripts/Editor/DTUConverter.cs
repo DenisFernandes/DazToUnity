@@ -72,6 +72,7 @@ namespace Daz3D
 		public string FBXFile;
 		public string ImportFolder;
 		public List<DTUMaterial> Materials;
+		public List<DTUHairAsset> HairAssets;
 
 		public bool UseSharedTextureDir;
 		public bool UseSharedMaterialDir;
@@ -2850,6 +2851,26 @@ namespace Daz3D
 
 	}
 
+	public struct DTUHairAsset
+	{
+		public float Version;
+		public string NodeName;
+		public string NodeLabel;
+		public string SourceClass;
+		public string AlembicFile;
+		public string RelativePath;
+		public string SourceFile;
+		public string JobFile;
+		public string ResultFile;
+		public string SchemaSummary;
+		public string ExportMode;
+		public int FrameStart;
+		public int FrameEnd;
+		public string ParentHint;
+		public string ExportStatus;
+		public string Warning;
+	}
+
 	public struct DTUMaterialProperty
 	{
 		public string Name;
@@ -2951,6 +2972,8 @@ namespace Daz3D
 			dtu.DTUPath = path;
 			dtu.UseSharedMaterialDir = false;
 			dtu.UseSharedTextureDir = false;
+			dtu.Materials = new List<DTUMaterial>();
+			dtu.HairAssets = new List<DTUHairAsset>();
 
 			if (!System.IO.File.Exists(path))
 			{
@@ -2978,7 +3001,6 @@ namespace Daz3D
 			dtu.ProductComponentName = root["Product Component Name"].Value;
 			dtu.FBXFile = root["FBX File"].Value;
 			dtu.ImportFolder = root["Import Folder"].Value;
-			dtu.Materials = new List<DTUMaterial>();
 
 			var materials = root["Materials"].AsArray;
 
@@ -3065,6 +3087,35 @@ namespace Daz3D
 				}
 
 				dtu.Materials.Add(dtuMat);
+			}
+
+			var hairAssets = root["HairAssets"];
+			if (hairAssets != null && hairAssets.IsArray)
+			{
+				foreach(var hairKVP in hairAssets.AsArray)
+				{
+					var hair = hairKVP.Value;
+					var dtuHair = new DTUHairAsset();
+
+					dtuHair.Version = hair["Version"].AsFloat;
+					dtuHair.NodeName = hair["Node Name"].Value;
+					dtuHair.NodeLabel = hair["Node Label"].Value;
+					dtuHair.SourceClass = hair["Source Class"].Value;
+					dtuHair.AlembicFile = hair["Alembic File"].Value;
+					dtuHair.RelativePath = hair["Relative Path"].Value;
+					dtuHair.SourceFile = hair["Source File"].Value;
+					dtuHair.JobFile = hair["Job File"].Value;
+					dtuHair.ResultFile = hair["Result File"].Value;
+					dtuHair.SchemaSummary = hair["Schema Summary"].Value;
+					dtuHair.ExportMode = hair["Export Mode"].Value;
+					dtuHair.FrameStart = hair["Frame Start"].AsInt;
+					dtuHair.FrameEnd = hair["Frame End"].AsInt;
+					dtuHair.ParentHint = hair["Parent Hint"].Value;
+					dtuHair.ExportStatus = hair["Export Status"].Value;
+					dtuHair.Warning = hair["Warning"].Value;
+
+					dtu.HairAssets.Add(dtuHair);
+				}
 			}
 
 			return dtu;

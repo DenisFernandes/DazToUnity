@@ -9,5 +9,6 @@
         <file alias="2020-builtin.unitypackage">DazToUnity_2020_Builtin.unitypackage</file>
         <file alias="icon">Images/Icon.png</file>
         <file alias="banner.jpg">Images/banner.jpg</file>
+        <file alias="dtu_blender_curve_bake.py">../../Tools/Blender/dtu_blender_curve_bake.py</file>
     </qresource>
 </RCC>

@@ -36,6 +36,10 @@ public:
 protected slots:
 	void HandleSelectAssetsFolderButton();
 	void HandleInstallUnityFilesCheckBoxChange(int state);
+	void HandleExportStrandHairAlembicCheckBoxChange(int state);
+	void HandleSelectStrandHairBlenderExecutableButton();
+	void HandleStrandHairBlenderExecutableChanged(const QString& executablePath);
+	void HandleRunStrandHairBlenderBakeCheckBoxChange(int state);
 	void HandleAssetFolderChanged(const QString& directoryName);
 	void HandleAssetTypeComboChange(int state) override;
 	void HandleTargetPluginInstallerButton() override;
@@ -50,6 +54,13 @@ protected:
 
 	QLabel* installOrOverwriteUnityFilesLabel;
 	QCheckBox* installUnityFilesCheckBox;
+	QLabel* exportStrandHairAlembicLabel;
+	QCheckBox* exportStrandHairAlembicCheckBox;
+	QLabel* strandHairBlenderExecutableLabel;
+	QLineEdit* strandHairBlenderExecutableEdit;
+	QPushButton* strandHairBlenderExecutableButton;
+	QLabel* runStrandHairBlenderBakeLabel;
+	QCheckBox* runStrandHairBlenderBakeCheckBox;
 
 	bool IsValidProjectFolder(QString sProjectFolderPath);
 	virtual void setDisabled(bool) override;

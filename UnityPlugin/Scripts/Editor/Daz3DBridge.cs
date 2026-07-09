@@ -94,6 +94,10 @@ namespace Daz3D
                         Debug.Log("FBX copied to: " + localPath + "/" + fbxFilename);
                         AssetDatabase.Refresh();
                     }
+                    if (CopyHairAlembicAssets(root, sourcePath, localPath))
+                    {
+                        AssetDatabase.Refresh();
+                    }
 
                     // importDTU
                     ReadyToImport = false;
@@ -116,6 +120,72 @@ namespace Daz3D
             //////////////////////////////
             EditorApplication.SaveScene(EditorApplication.currentScene);
             EditorApplication.Exit(0);
+        }
+
+        private static bool CopyHairAlembicAssets(SimpleJSON.JSONNode root, string sourcePath, string localPath)
+        {
+            var hairAssets = root["HairAssets"];
+            if (hairAssets == null || !hairAssets.IsArray)
+                return false;
+
+            bool copiedAny = false;
+            foreach (var hairKVP in hairAssets.AsArray)
+            {
+                var hair = hairKVP.Value;
+                var exportStatus = hair["Export Status"].Value;
+                var exportMode = hair["Export Mode"].Value;
+                if (!string.Equals(exportStatus, "Exported", StringComparison.OrdinalIgnoreCase))
+                {
+                    var warning = hair["Warning"].Value;
+                    if (!string.IsNullOrEmpty(warning))
+                    {
+                        Debug.LogWarning("DazToUnity: Hair Alembic skipped by Daz export: " + hair["Node Label"].Value + " - " + warning);
+                    }
+                    continue;
+                }
+                if (!string.Equals(exportMode, "ExternalBlenderCurveBake", StringComparison.OrdinalIgnoreCase))
+                {
+                    Debug.LogWarning("DazToUnity: Hair Alembic entry is exported but not a verified Blender curve bake, skipping: " + hair["Node Label"].Value + " mode=" + exportMode);
+                    continue;
+                }
+
+                var relativePath = hair["Relative Path"].Value.Replace("\\", "/");
+                var alembicSourcePath = hair["Alembic File"].Value.Replace("\\", "/");
+                if (string.IsNullOrEmpty(alembicSourcePath) && !string.IsNullOrEmpty(relativePath))
+                {
+                    alembicSourcePath = System.IO.Path.Combine(sourcePath, relativePath);
+                }
+
+                if (string.IsNullOrEmpty(relativePath))
+                {
+                    relativePath = "Hair/" + System.IO.Path.GetFileName(alembicSourcePath);
+                }
+
+                var localHairPath = (localPath + "/" + relativePath).Replace("\\", "/");
+                if (string.IsNullOrEmpty(alembicSourcePath) || !System.IO.File.Exists(alembicSourcePath))
+                {
+                    Debug.LogWarning("DazToUnity: Hair Alembic file referenced by DTU was not found: " + alembicSourcePath);
+                    continue;
+                }
+
+                try
+                {
+                    var localHairDirectory = System.IO.Path.GetDirectoryName(localHairPath);
+                    if (!string.IsNullOrEmpty(localHairDirectory) && !System.IO.Directory.Exists(localHairDirectory))
+                    {
+                        System.IO.Directory.CreateDirectory(localHairDirectory);
+                    }
+                    System.IO.File.Copy(alembicSourcePath, localHairPath, true);
+                    Debug.Log("Hair Alembic copied to: " + localHairPath);
+                    copiedAny = true;
+                }
+                catch (Exception e)
+                {
+                    Debug.LogWarning("DazToUnity: Failed to copy Hair Alembic file: " + alembicSourcePath + " -> " + localHairPath + "\n" + e.Message);
+                }
+            }
+
+            return copiedAny;
         }
 
         static void AutoImport()

@@ -9,6 +9,8 @@
 #include <QtGui/qboxlayout.h>
 #include <QtGui/qfiledialog.h>
 #include <QtCore/qsettings.h>
+#include <QtCore/qdir.h>
+#include <QtCore/qfileinfo.h>
 #include <QtGui/qformlayout.h>
 #include <QtGui/qcombobox.h>
 #include <QtGui/qdesktopservices.h>
@@ -44,6 +46,26 @@ Local definitions
 
 #include "dzbridge.h"
 
+static QString defaultStrandHairBlenderExecutable()
+{
+	QString envBlender = QString::fromLocal8Bit(qgetenv("DAZ_TO_UNITY_BLENDER_EXE").constData()).trimmed();
+	if (!envBlender.isEmpty())
+		return QDir::cleanPath(envBlender);
+
+	QStringList candidates;
+	candidates << "C:/Program Files/Blender Foundation/Blender 4.4/blender.exe"
+		<< "C:/Program Files/Blender Foundation/Blender 5.1/blender.exe"
+		<< "C:/Program Files/Blender Foundation/Blender 4.2/blender.exe";
+	foreach(QString candidate, candidates)
+	{
+		QFileInfo fileInfo(candidate);
+		if (fileInfo.exists() && fileInfo.isFile())
+			return fileInfo.absoluteFilePath();
+	}
+
+	return candidates.first();
+}
+
 DzUnityForkDialog::DzUnityForkDialog(QWidget* parent) :
 	 DzBridgeDialog(parent, DAZ_TO_UNITY_PLUGIN_NAME)
 {
@@ -52,6 +74,12 @@ DzUnityForkDialog::DzUnityForkDialog(QWidget* parent) :
 	 assetsFolderEdit = nullptr;
 	 assetsFolderButton = nullptr;
 	 installUnityFilesCheckBox = nullptr;
+	 exportStrandHairAlembicCheckBox = nullptr;
+	 strandHairBlenderExecutableLabel = nullptr;
+	 strandHairBlenderExecutableEdit = nullptr;
+	 strandHairBlenderExecutableButton = nullptr;
+	 runStrandHairBlenderBakeLabel = nullptr;
+	 runStrandHairBlenderBakeCheckBox = nullptr;
 
 	 settings = new QSettings("Daz 3D", "DazToUnityFork");
 
@@ -119,6 +147,29 @@ DzUnityForkDialog::DzUnityForkDialog(QWidget* parent) :
 	 installUnityFilesCheckBox = new QCheckBox("", this);
 	 connect(installUnityFilesCheckBox, SIGNAL(stateChanged(int)), this, SLOT(HandleInstallUnityFilesCheckBoxChange(int)));
 
+	 exportStrandHairAlembicLabel = new QLabel(tr("Export Strand Hair via Blender Curves"));
+	 exportStrandHairAlembicCheckBox = new QCheckBox("", this);
+	 exportStrandHairAlembicCheckBox->setToolTip(tr("Bake supported dForce strand-based hair through Blender/Diffeomorphic and export Unity-readable Alembic curves."));
+	 exportStrandHairAlembicCheckBox->setWhatsThis(tr("When enabled, the bridge writes a Blender hair bake job for detected dForce strand-based hair nodes and records the resulting curve Alembic files in the DTU."));
+	 connect(exportStrandHairAlembicCheckBox, SIGNAL(stateChanged(int)), this, SLOT(HandleExportStrandHairAlembicCheckBoxChange(int)));
+
+	 QHBoxLayout* blenderExecutableLayout = new QHBoxLayout();
+	 strandHairBlenderExecutableLabel = new QLabel(tr("Blender Executable"));
+	 strandHairBlenderExecutableEdit = new QLineEdit(this);
+	 strandHairBlenderExecutableButton = new QPushButton("...", this);
+	 strandHairBlenderExecutableEdit->setToolTip(tr("Path to blender.exe used for background strand-hair curve baking."));
+	 strandHairBlenderExecutableEdit->setWhatsThis(tr("The bridge starts Blender in background mode with the bundled dtu_blender_curve_bake.py script. DAZ_TO_UNITY_BLENDER_EXE can also override this path."));
+	 blenderExecutableLayout->addWidget(strandHairBlenderExecutableEdit);
+	 blenderExecutableLayout->addWidget(strandHairBlenderExecutableButton);
+	 connect(strandHairBlenderExecutableEdit, SIGNAL(textChanged(const QString&)), this, SLOT(HandleStrandHairBlenderExecutableChanged(const QString&)));
+	 connect(strandHairBlenderExecutableButton, SIGNAL(released()), this, SLOT(HandleSelectStrandHairBlenderExecutableButton()));
+
+	 runStrandHairBlenderBakeLabel = new QLabel(tr("Run Blender Hair Bake Now"));
+	 runStrandHairBlenderBakeCheckBox = new QCheckBox("", this);
+	 runStrandHairBlenderBakeCheckBox->setToolTip(tr("Run Blender during export. Disable this to write job files only."));
+	 runStrandHairBlenderBakeCheckBox->setWhatsThis(tr("When disabled, the DTU records pending hair bake jobs but does not attempt to produce Alembic curve files during this Daz export."));
+	 connect(runStrandHairBlenderBakeCheckBox, SIGNAL(stateChanged(int)), this, SLOT(HandleRunStrandHairBlenderBakeCheckBoxChange(int)));
+
 	// Disable Experimental Options Checkbox
 	m_enableExperimentalOptionsCheckBox->setEnabled(false);
 	m_enableExperimentalOptionsCheckBox->setToolTip(tr("No experimental options in this version."));
@@ -127,6 +178,9 @@ DzUnityForkDialog::DzUnityForkDialog(QWidget* parent) :
 	 // Add the widget to the basic dialog
 	 mainLayout->insertRow(1, "Unity Assets Folder", assetsFolderLayout);
 	 mainLayout->insertRow(2, installOrOverwriteUnityFilesLabel, installUnityFilesCheckBox);
+	 mainLayout->insertRow(3, exportStrandHairAlembicLabel, exportStrandHairAlembicCheckBox);
+	 mainLayout->insertRow(4, strandHairBlenderExecutableLabel, blenderExecutableLayout);
+	 mainLayout->insertRow(5, runStrandHairBlenderBakeLabel, runStrandHairBlenderBakeCheckBox);
 
 	 // Rename Open Intermediate Folder button
 	 m_OpenIntermediateFolderButton->setText(tr("Open Unity Project Folder"));
@@ -185,6 +239,19 @@ bool DzUnityForkDialog::loadSavedSettings()
 		assetsFolderEdit->setText(DefaultPath);
 	}
 
+	if (exportStrandHairAlembicCheckBox)
+	{
+		exportStrandHairAlembicCheckBox->setChecked(settings->value("ExportStrandHairAlembic", false).toBool());
+	}
+	if (strandHairBlenderExecutableEdit)
+	{
+		strandHairBlenderExecutableEdit->setText(settings->value("StrandHairBlenderExecutable", defaultStrandHairBlenderExecutable()).toString());
+	}
+	if (runStrandHairBlenderBakeCheckBox)
+	{
+		runStrandHairBlenderBakeCheckBox->setChecked(settings->value("RunStrandHairBlenderBake", true).toBool());
+	}
+
 	return true;
 }
 
@@ -196,6 +263,18 @@ void DzUnityForkDialog::resetToDefaults()
 
 	QString DefaultPath = QDesktopServices::storageLocation(QDesktopServices::DocumentsLocation) + QDir::separator() + "DazToUnityFork";
 	assetsFolderEdit->setText(DefaultPath);
+	if (exportStrandHairAlembicCheckBox)
+	{
+		exportStrandHairAlembicCheckBox->setChecked(false);
+	}
+	if (strandHairBlenderExecutableEdit)
+	{
+		strandHairBlenderExecutableEdit->setText(defaultStrandHairBlenderExecutable());
+	}
+	if (runStrandHairBlenderBakeCheckBox)
+	{
+		runStrandHairBlenderBakeCheckBox->setChecked(true);
+	}
 
 	DzNode* Selection = dzScene->getPrimarySelection();
 	if (dzScene->getFilename().length() > 0)
@@ -298,6 +377,43 @@ void DzUnityForkDialog::HandleSelectAssetsFolderButton()
 void DzUnityForkDialog::HandleInstallUnityFilesCheckBoxChange(int state)
 {
 	 settings->setValue("InstallUnityFiles", state == Qt::Checked);
+}
+
+void DzUnityForkDialog::HandleExportStrandHairAlembicCheckBoxChange(int state)
+{
+	if (m_bDontSaveSettings)
+		return;
+
+	settings->setValue("ExportStrandHairAlembic", state == Qt::Checked);
+}
+
+void DzUnityForkDialog::HandleSelectStrandHairBlenderExecutableButton()
+{
+	QString startPath = strandHairBlenderExecutableEdit ? strandHairBlenderExecutableEdit->text() : defaultStrandHairBlenderExecutable();
+	QString directory = QFileInfo(startPath).absolutePath();
+	QString selectedPath = QFileDialog::getOpenFileName(this, tr("Select Blender Executable"), directory, tr("Blender Executable (blender.exe);;Executables (*.exe);;All Files (*.*)"));
+	if (selectedPath.isEmpty())
+		return;
+
+	if (strandHairBlenderExecutableEdit)
+		strandHairBlenderExecutableEdit->setText(QDir::cleanPath(selectedPath));
+	settings->setValue("StrandHairBlenderExecutable", QDir::cleanPath(selectedPath));
+}
+
+void DzUnityForkDialog::HandleStrandHairBlenderExecutableChanged(const QString& executablePath)
+{
+	if (m_bDontSaveSettings)
+		return;
+
+	settings->setValue("StrandHairBlenderExecutable", executablePath);
+}
+
+void DzUnityForkDialog::HandleRunStrandHairBlenderBakeCheckBoxChange(int state)
+{
+	if (m_bDontSaveSettings)
+		return;
+
+	settings->setValue("RunStrandHairBlenderBake", state == Qt::Checked);
 }
 
 void DzUnityForkDialog::HandleAssetTypeComboChange(const QString& assetType)
@@ -575,6 +691,10 @@ void DzUnityForkDialog::setDisabled(bool bDisabled)
 	assetsFolderButton->setDisabled(bDisabled);
 	assetsFolderEdit->setDisabled(bDisabled);
 	installUnityFilesCheckBox->setDisabled(bDisabled);
+	exportStrandHairAlembicCheckBox->setDisabled(bDisabled);
+	strandHairBlenderExecutableEdit->setDisabled(bDisabled);
+	strandHairBlenderExecutableButton->setDisabled(bDisabled);
+	runStrandHairBlenderBakeCheckBox->setDisabled(bDisabled);
 
 }
 

@@ -33,7 +33,10 @@ UserSettings/
 # QA output folders not tracked as baselines
 Test/Reports/
 
+# Local third-party download/cache space
+Tools/.cache/
+Tools/Blender/__pycache__/
+
 # OS files
 .DS_Store
 Thumbs.db
-

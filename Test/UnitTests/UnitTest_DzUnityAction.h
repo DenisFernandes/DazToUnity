@@ -14,6 +14,14 @@ private:
 	bool _DzBridgeUnityAction(UnitTest::TestResult* testResult);
 	bool setInstallUnityFiles(UnitTest::TestResult* testResult);
 	bool getInstallUnityFiles(UnitTest::TestResult* testResult);
+	bool setExportStrandHairAlembic(UnitTest::TestResult* testResult);
+	bool getExportStrandHairAlembic(UnitTest::TestResult* testResult);
+	bool setExportStrandHairBlenderAlembic(UnitTest::TestResult* testResult);
+	bool getExportStrandHairBlenderAlembic(UnitTest::TestResult* testResult);
+	bool setStrandHairBlenderExecutable(UnitTest::TestResult* testResult);
+	bool getStrandHairBlenderExecutable(UnitTest::TestResult* testResult);
+	bool setRunStrandHairBlenderBake(UnitTest::TestResult* testResult);
+	bool getRunStrandHairBlenderBake(UnitTest::TestResult* testResult);
 	bool executeAction(UnitTest::TestResult* testResult);
 	bool createUI(UnitTest::TestResult* testResult);
 	bool writeConfiguration(UnitTest::TestResult* testResult);

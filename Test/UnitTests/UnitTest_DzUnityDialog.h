@@ -17,6 +17,9 @@ private:
 	bool loadSavedSettings(UnitTest::TestResult* testResult);
 	bool HandleSelectAssetsFolderButton(UnitTest::TestResult* testResult);
 	bool HandleInstallUnityFilesCheckBoxChange(UnitTest::TestResult* testResult);
+	bool HandleExportStrandHairAlembicCheckBoxChange(UnitTest::TestResult* testResult);
+	bool HandleStrandHairBlenderExecutableChanged(UnitTest::TestResult* testResult);
+	bool HandleRunStrandHairBlenderBakeCheckBoxChange(UnitTest::TestResult* testResult);
 	bool HandleAssetTypeComboChange(UnitTest::TestResult* testResult);
 	bool HandleAssetFolderChanged(UnitTest::TestResult* testResult);
 

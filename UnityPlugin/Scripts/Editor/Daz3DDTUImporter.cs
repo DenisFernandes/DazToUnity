@@ -3,19 +3,19 @@
 
 
 using UnityEditor;
-using UnityEditor.Experimental.AssetImporters;
 using System.Collections.Generic;
 using System;
 using System.Collections;
 using UnityEngine;
 using System.IO;
+using System.Reflection;
 using System.Runtime.InteropServices;
 
 namespace Daz3D
 {
 
-    [ScriptedImporter(1, "dtu", 0x7FFFFFFF)]
-    public class Daz3DDTUImporter : ScriptedImporter
+    [UnityEditor.AssetImporters.ScriptedImporter(1, "dtu", 0x7FFFFFFF)]
+    public class Daz3DDTUImporter : UnityEditor.AssetImporters.ScriptedImporter
     {
         public static bool AutoImportDTUChanges = true;
         public static bool GenerateUnityPrefab = true;
@@ -106,7 +106,7 @@ namespace Daz3D
         /// This will probably be the first DTU Brudge code which is executed
         /// when the DTU Bridge is first installed into Unity.
         /// </summary>
-        public override void OnImportAsset(AssetImportContext ctx)
+        public override void OnImportAsset(UnityEditor.AssetImporters.AssetImportContext ctx)
         {
             if (Daz3DBridge.BatchConversionMode != 0) return;
 
@@ -901,6 +901,8 @@ namespace Daz3D
             nuPrefabPathPath += "/" + prefabFilestem + "_Prefab.prefab";
             nuPrefabPathPath = AssetDatabase.GenerateUniqueAssetPath(nuPrefabPathPath);
 
+            AttachAlembicHairAssets(dtu, workingInstance);
+
             // For future refreshment
             var component = workingInstance.AddComponent<Daz3DInstance>();
             component.SourceFBX = fbxPrefab;
@@ -965,6 +967,243 @@ namespace Daz3D
                 DestroyImmediate(resultingInstance);
             }
 
+        }
+
+        private static void AttachAlembicHairAssets(DTU dtu, GameObject workingInstance)
+        {
+            if (workingInstance == null || dtu.HairAssets == null || dtu.HairAssets.Count == 0)
+                return;
+
+            var record = new ImportEventRecord();
+            var exportedHairAssets = new List<DTUHairAsset>();
+            foreach (var hairAsset in dtu.HairAssets)
+            {
+                if (IsVerifiedBlenderCurveHair(hairAsset))
+                {
+                    exportedHairAssets.Add(hairAsset);
+                }
+                else
+                {
+                    string reason = "status=" + hairAsset.ExportStatus + ", mode=" + hairAsset.ExportMode;
+                    if (!string.IsNullOrEmpty(hairAsset.Warning))
+                        reason += " - " + hairAsset.Warning;
+                    record.AddToken("Hair Alembic skipped: " + hairAsset.NodeLabel + " (" + reason + ")", null, ENDLINE);
+                }
+            }
+
+            if (exportedHairAssets.Count == 0)
+            {
+                if (record.Tokens.Count > 0)
+                {
+                    EventQueue.Enqueue(record);
+                }
+                return;
+            }
+
+            if (!HasUnityAlembicPackage())
+            {
+                string message = "DazToUnity: DTU references Alembic hair assets, but com.unity.formats.alembic is not installed. Prefab import will continue without Alembic hair.";
+                Debug.LogWarning(message);
+                record.AddToken(message, null, ENDLINE);
+                EventQueue.Enqueue(record);
+                return;
+            }
+
+            foreach (var hairAsset in exportedHairAssets)
+            {
+                var alembicAssetPath = ResolveHairAlembicAssetPath(dtu, hairAsset);
+                if (string.IsNullOrEmpty(alembicAssetPath))
+                {
+                    string message = "DazToUnity: Could not resolve Hair Alembic file for " + hairAsset.NodeLabel + " (" + hairAsset.RelativePath + ").";
+                    Debug.LogWarning(message);
+                    record.AddToken(message, null, ENDLINE);
+                    continue;
+                }
+
+                ConfigureAlembicHairImporter(alembicAssetPath, record);
+                AssetDatabase.ImportAsset(alembicAssetPath, ImportAssetOptions.ForceUpdate);
+                var hairPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(alembicAssetPath);
+                if (hairPrefab == null)
+                {
+                    string message = "DazToUnity: Hair Alembic file did not import as a GameObject: " + alembicAssetPath;
+                    Debug.LogWarning(message);
+                    record.AddToken(message, null, ENDLINE);
+                    continue;
+                }
+
+                var hairInstance = PrefabUtility.InstantiatePrefab(hairPrefab) as GameObject;
+                if (hairInstance == null)
+                {
+                    hairInstance = Instantiate(hairPrefab);
+                }
+
+                if (!string.IsNullOrEmpty(hairAsset.NodeLabel))
+                    hairInstance.name = hairAsset.NodeLabel;
+                else if (!string.IsNullOrEmpty(hairAsset.NodeName))
+                    hairInstance.name = hairAsset.NodeName;
+
+                var parent = FindBestHairParent(workingInstance.transform, hairAsset.ParentHint);
+                hairInstance.transform.SetParent(parent, true);
+
+                record.AddToken("Attached Alembic hair: ");
+                record.AddToken(hairInstance.name, hairInstance);
+                record.AddToken(" from ");
+                record.AddToken(alembicAssetPath, hairPrefab, ENDLINE);
+                if (!string.IsNullOrEmpty(hairAsset.SchemaSummary))
+                {
+                    record.AddToken("Hair Alembic schema verified for ");
+                    record.AddToken(hairInstance.name, hairInstance, ENDLINE);
+                }
+            }
+
+            if (record.Tokens.Count > 0)
+            {
+                EventQueue.Enqueue(record);
+            }
+        }
+
+        private static bool IsVerifiedBlenderCurveHair(DTUHairAsset hairAsset)
+        {
+            return string.Equals(hairAsset.ExportStatus, "Exported", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(hairAsset.ExportMode, "ExternalBlenderCurveBake", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static void ConfigureAlembicHairImporter(string alembicAssetPath, ImportEventRecord record)
+        {
+            var importer = AssetImporter.GetAtPath(alembicAssetPath);
+            if (importer == null)
+            {
+                return;
+            }
+
+            try
+            {
+                var importerType = importer.GetType();
+                var streamSettingsProperty = importerType.GetProperty("StreamSettings", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                if (streamSettingsProperty == null)
+                {
+                    return;
+                }
+
+                var streamSettings = streamSettingsProperty.GetValue(importer, null);
+                if (streamSettings == null)
+                {
+                    return;
+                }
+
+                var settingsType = streamSettings.GetType();
+                SetBooleanProperty(settingsType, streamSettings, "ImportPoints", true);
+                SetBooleanProperty(settingsType, streamSettings, "ImportCurves", true);
+                SetBooleanProperty(settingsType, streamSettings, "CreateCurveRenderers", true);
+                streamSettingsProperty.SetValue(importer, streamSettings, null);
+                EditorUtility.SetDirty(importer);
+                AssetDatabase.WriteImportSettingsIfDirty(alembicAssetPath);
+            }
+            catch (Exception e)
+            {
+                string message = "DazToUnity: Unable to configure Alembic hair importer settings for " + alembicAssetPath + ": " + e.Message;
+                Debug.LogWarning(message);
+                record.AddToken(message, null, ENDLINE);
+            }
+        }
+
+        private static void SetBooleanProperty(Type ownerType, object target, string propertyName, bool value)
+        {
+            var property = ownerType.GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            if (property != null && property.CanWrite)
+            {
+                property.SetValue(target, value, null);
+            }
+        }
+
+        private static bool HasUnityAlembicPackage()
+        {
+            try
+            {
+                var packageInfoType = Type.GetType("UnityEditor.PackageManager.PackageInfo,UnityEditor.dll");
+                var method = packageInfoType?.GetMethod("FindForPackageName", new[] { typeof(string) });
+                if (method != null)
+                {
+                    var packageInfo = method.Invoke(null, new object[] { "com.unity.formats.alembic" });
+                    if (packageInfo != null)
+                        return true;
+                }
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning("DazToUnity: Unable to query PackageInfo for Alembic package: " + e.Message);
+            }
+
+            if (Directory.Exists("Packages/com.unity.formats.alembic"))
+                return true;
+
+            if (Directory.Exists("Library/PackageCache") &&
+                Directory.GetDirectories("Library/PackageCache", "com.unity.formats.alembic@*").Length > 0)
+                return true;
+
+            return false;
+        }
+
+        private static string ResolveHairAlembicAssetPath(DTU dtu, DTUHairAsset hairAsset)
+        {
+            if (!string.IsNullOrEmpty(hairAsset.RelativePath))
+            {
+                var relativeAssetPath = Path.Combine(dtu.DTUDir, hairAsset.RelativePath).Replace("\\", "/");
+                if (File.Exists(relativeAssetPath))
+                    return relativeAssetPath;
+            }
+
+            if (string.IsNullOrEmpty(hairAsset.AlembicFile))
+                return "";
+
+            var absolutePath = hairAsset.AlembicFile.Replace("\\", "/");
+            var dataPath = Application.dataPath.Replace("\\", "/");
+            if (absolutePath.StartsWith(dataPath, StringComparison.OrdinalIgnoreCase))
+            {
+                var projectPath = "Assets" + absolutePath.Substring(dataPath.Length);
+                if (File.Exists(projectPath))
+                    return projectPath;
+            }
+
+            if (absolutePath.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase) && File.Exists(absolutePath))
+                return absolutePath;
+
+            return "";
+        }
+
+        private static Transform FindBestHairParent(Transform root, string parentHint)
+        {
+            if (root == null)
+                return null;
+
+            Transform parent = null;
+            if (!string.IsNullOrEmpty(parentHint))
+            {
+                parent = FindChildByNameContains(root, parentHint);
+            }
+            if (parent == null)
+            {
+                parent = FindChildByNameContains(root, "head");
+            }
+            return parent != null ? parent : root;
+        }
+
+        private static Transform FindChildByNameContains(Transform root, string needle)
+        {
+            if (root == null || string.IsNullOrEmpty(needle))
+                return null;
+
+            if (root.name.IndexOf(needle, StringComparison.OrdinalIgnoreCase) >= 0)
+                return root;
+
+            for (int i = 0; i < root.childCount; i++)
+            {
+                var match = FindChildByNameContains(root.GetChild(i), needle);
+                if (match != null)
+                    return match;
+            }
+
+            return null;
         }
 
         private static void ImportDforceToPrefab(string key, Renderer renderer, GameObject workingInstance, Material keyMat)
