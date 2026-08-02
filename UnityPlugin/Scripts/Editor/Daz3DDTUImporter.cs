@@ -535,6 +535,7 @@ namespace Daz3D
 
         public static void GeneratePrefabFromFBX(string fbxPath, DazFigurePlatform platform, DTU dtu)
         {
+            EnsureModelImporterReadable(fbxPath);
             var fbxPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(fbxPath);
 
             if (fbxPrefab == null)
@@ -686,12 +687,18 @@ namespace Daz3D
                         foreach (var keyMat in renderer.sharedMaterials)
                         {
                             // DB (2021-05-07): SANITY CHECK
-                            if (keyMat == null)
+                            if (!keyMat)
                             {
-                                Debug.LogError("DB (2021-05-07), ERROR: keyMat is NULL");
+                                Debug.LogWarning("DazBridge: Skipping null or destroyed source material during material remapping.");
                                 continue;
                             }
-                            var key = keyMat.name;
+                            var sourceMaterialName = GetMaterialNameSafe(keyMat);
+                            if (string.IsNullOrEmpty(sourceMaterialName))
+                            {
+                                Debug.LogWarning("DazBridge: Skipping source material with no readable name during material remapping.");
+                                continue;
+                            }
+                            var key = sourceMaterialName;
 
                             key = Daz3D.Utilities.ScrubKey(key);
 
@@ -813,8 +820,8 @@ namespace Daz3D
                             }
                             else
                             {
-                                Debug.LogError("DazBridge: No imported materials were found for material remapping");
-                                continue;
+                                Debug.LogWarning("DazBridge: No imported material was found for material remapping key '" + key + "'. Preserving FBX material '" + sourceMaterialName + "'.");
+                                nuMat = keyMat;
 
                                 /****
                                  ** Everything below is old and broken.
@@ -847,7 +854,7 @@ namespace Daz3D
                                 */
                             }
 
-                            dict.Add(keyMat, nuMat);
+                            dict[keyMat] = nuMat;
 
                         }
 
@@ -858,17 +865,20 @@ namespace Daz3D
                         {
                             var key = renderer.sharedMaterials[i];
                             // DB (2021-05-07): SANITY CHECK
-                            if (key == null || !dict.ContainsKey(key))
+                            if (!key)
                             {
-                                Debug.LogError("DB (2021-05-07), ERROR: GeneratePrefabFromFBX(): sharedMaterials[" + i + "] (" + renderer.sharedMaterials + ") returned invalid key.");
-                                if (key != null)
-                                    Debug.LogError(" part 2: key==" + key);
-                                else
-                                    Debug.LogError(" part 2: key==null");
+                                Debug.LogWarning("DazBridge: sharedMaterials[" + i + "] on renderer '" + renderer.name + "' is null or destroyed; leaving the slot empty.");
+                                copy[i] = null;
+                            }
+                            else if (!dict.ContainsKey(key))
+                            {
+                                var sourceMaterialName = GetMaterialNameSafe(key);
+                                Debug.LogWarning("DazBridge: No replacement material was mapped for sharedMaterials[" + i + "] on renderer '" + renderer.name + "' (" + sourceMaterialName + "). Preserving the original material.");
+                                copy[i] = key;
                             }
                             else
                             {
-                                Debug.Log("remapping: " + renderer.sharedMaterials[i].name + " to " + dict[key].name);
+                                Debug.Log("remapping: " + GetMaterialNameSafe(renderer.sharedMaterials[i]) + " to " + GetMaterialNameSafe(dict[key]));
                                 copy[i] = dict[key];//fill copy
                             }
                         }
@@ -967,6 +977,33 @@ namespace Daz3D
                 DestroyImmediate(resultingInstance);
             }
 
+        }
+
+        private static void EnsureModelImporterReadable(string fbxPath)
+        {
+            var importer = AssetImporter.GetAtPath(fbxPath) as ModelImporter;
+            if (importer == null || importer.isReadable)
+                return;
+
+            importer.isReadable = true;
+            AssetDatabase.WriteImportSettingsIfDirty(fbxPath);
+            AssetDatabase.ImportAsset(fbxPath, ImportAssetOptions.ForceUpdate);
+            Debug.Log("DazBridge: Enabled Read/Write on FBX model importer so generated prefab steps can read mesh UV data: " + fbxPath);
+        }
+
+        private static string GetMaterialNameSafe(Material material)
+        {
+            if (!material)
+                return "";
+
+            try
+            {
+                return material.name ?? "";
+            }
+            catch (MissingReferenceException)
+            {
+                return "";
+            }
         }
 
         private static void AttachAlembicHairAssets(DTU dtu, GameObject workingInstance)
