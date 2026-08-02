@@ -5,6 +5,7 @@
 #include <QtCore/qfile.h>
 #include <QtCore/qtextstream.h>
 #include <QtCore/qlist.h>
+#include <QtCore/qmap.h>
 #include <QtCore/qstringlist.h>
 #include <DzBridgeAction.h>
 #include "DzUnityDialog.h"
@@ -54,6 +55,16 @@ protected:
 		QString Warning;
 	};
 
+	struct FollowerRigConsolidationResult
+	{
+		bool Success;
+		bool Changed;
+		int ClustersRedirected;
+		int BonesRemoved;
+		QStringList Warnings;
+		QStringList Summaries;
+	};
+
 	 bool m_bInstallUnityFiles;
 	 bool m_bExportStrandHairAlembic;
 	 bool m_bRunStrandHairBlenderBake;
@@ -63,6 +74,7 @@ protected:
 	 void executeAction();
 	 Q_INVOKABLE bool createUI();
 	 void exportNode(DzNode* Node) override;
+	 Q_INVOKABLE bool postProcessFbx(QString fbxFilePath) override;
 	 Q_INVOKABLE void writeConfiguration();
 	 Q_INVOKABLE void setExportOptions(DzFileIOSettings& ExportOptions);
 	 Q_INVOKABLE QString createUnityFiles(bool replace = true);
@@ -91,6 +103,9 @@ protected:
 	 void exportStrandHairAlembic(DzNode* RootNode);
 	 HairAssetRecord exportStrandHairNode(DzNode* HairNode);
 	 void writeHairAssets(DzJsonWriter& writer);
+	 QStringList getMainFigureMeshNames();
+	 bool consolidateFollowerRigsInFile(const QString& FbxFilePath);
+	 FollowerRigConsolidationResult consolidateFollowerRigs(FbxScene* Scene, const QStringList& MainMeshNames);
 
 #ifdef UNITTEST_DZBRIDGE
 	friend class UnitTest_DzUnityAction;

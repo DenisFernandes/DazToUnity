@@ -6,8 +6,10 @@
 #include <QtCore/qcoreapplication.h>
 #include <QtCore/qdir.h>
 #include <QtCore/qfileinfo.h>
+#include <QtCore/qmap.h>
 #include <QtCore/qpair.h>
 #include <QtCore/qprocess.h>
+#include <QtCore/qset.h>
 #include <QtCore/qvariant.h>
 #include <QtGui/qdesktopservices.h>
 
@@ -40,12 +42,187 @@
 #include "DzUnityDialog.h"
 #include "DzBridgeMorphSelectionDialog.h"
 #include "DzBridgeSubdivisionDialog.h"
+#include "OpenFBXInterface.h"
 
 #ifdef WIN32
 #include <shellapi.h>
 #endif
 
 #include "dzbridge.h"
+
+namespace
+{
+	const double FOLLOWER_RIG_MATRIX_TOLERANCE = 0.000001;
+
+	struct FollowerClusterUse
+	{
+		FbxCluster* Cluster;
+		FbxNode* MeshNode;
+	};
+
+	struct FollowerBoneMerge
+	{
+		QString BoneName;
+		FbxNode* Follower;
+		FbxNode* Canonical;
+		FbxAMatrix CanonicalBindMatrix;
+		QList<FollowerClusterUse> ClusterUses;
+	};
+
+	bool isSkeletonNode(FbxNode* Node)
+	{
+		if (Node == nullptr || Node->GetNodeAttribute() == nullptr)
+			return false;
+		return Node->GetNodeAttribute()->GetAttributeType() == FbxNodeAttribute::eSkeleton;
+	}
+
+	bool isSupportedCluster(FbxCluster* Cluster)
+	{
+		if (Cluster == nullptr || Cluster->GetAssociateModel() != nullptr)
+			return false;
+		FbxCluster::ELinkMode Mode = Cluster->GetLinkMode();
+		return Mode == FbxCluster::eNormalize || Mode == FbxCluster::eTotalOne;
+	}
+
+	bool matricesMatch(const FbxAMatrix& Left, const FbxAMatrix& Right)
+	{
+		for (int Row = 0; Row < 4; ++Row)
+		{
+			for (int Column = 0; Column < 4; ++Column)
+			{
+				if (qAbs(Left.Get(Row, Column) - Right.Get(Row, Column)) > FOLLOWER_RIG_MATRIX_TOLERANCE)
+					return false;
+			}
+		}
+		return true;
+	}
+
+	QString fbxObjectName(const char* Name)
+	{
+		return QString::fromUtf8(Name ? Name : "");
+	}
+
+	void collectSceneData(
+		FbxNode* Node,
+		QMap<QString, QList<FbxNode*> >& SkeletonsByName,
+		QMap<FbxNode*, QList<FollowerClusterUse> >& ClusterUsesByBone,
+		QList<FbxNode*>& MeshNodes,
+		QList<FbxCluster*>& AllClusters)
+	{
+		if (Node == nullptr)
+			return;
+
+		if (isSkeletonNode(Node))
+			SkeletonsByName[fbxObjectName(Node->GetName())].append(Node);
+
+		FbxMesh* Mesh = Node->GetMesh();
+		if (Mesh != nullptr)
+		{
+			MeshNodes.append(Node);
+			int SkinCount = Mesh->GetDeformerCount(FbxDeformer::eSkin);
+			for (int SkinIndex = 0; SkinIndex < SkinCount; ++SkinIndex)
+			{
+				FbxSkin* Skin = static_cast<FbxSkin*>(Mesh->GetDeformer(SkinIndex, FbxDeformer::eSkin));
+				if (Skin == nullptr)
+					continue;
+				for (int ClusterIndex = 0; ClusterIndex < Skin->GetClusterCount(); ++ClusterIndex)
+				{
+					FbxCluster* Cluster = Skin->GetCluster(ClusterIndex);
+					if (Cluster == nullptr)
+						continue;
+					AllClusters.append(Cluster);
+					FbxNode* Link = Cluster->GetLink();
+					if (Link != nullptr)
+					{
+						FollowerClusterUse Use;
+						Use.Cluster = Cluster;
+						Use.MeshNode = Node;
+						ClusterUsesByBone[Link].append(Use);
+					}
+				}
+			}
+		}
+
+		for (int ChildIndex = 0; ChildIndex < Node->GetChildCount(); ++ChildIndex)
+			collectSceneData(Node->GetChild(ChildIndex), SkeletonsByName, ClusterUsesByBone, MeshNodes, AllClusters);
+	}
+
+	bool meshNameMatches(FbxNode* MeshNode, const QStringList& MainMeshNames)
+	{
+		if (MeshNode == nullptr || MeshNode->GetMesh() == nullptr)
+			return false;
+		QString NodeName = fbxObjectName(MeshNode->GetName());
+		QString GeometryName = fbxObjectName(MeshNode->GetMesh()->GetName());
+		return MainMeshNames.contains(NodeName) || MainMeshNames.contains(GeometryName);
+	}
+
+	QString componentNames(const QList<FbxNode*>& Component, const QMap<FbxNode*, FollowerBoneMerge>& Merges)
+	{
+		QStringList Names;
+		for (int Index = 0; Index < Component.count(); ++Index)
+		{
+			QString Name = Merges.value(Component[Index]).BoneName;
+			if (!Names.contains(Name))
+				Names.append(Name);
+		}
+		Names.sort();
+		return Names.join(", ");
+	}
+
+	int nodeDepth(FbxNode* Node)
+	{
+		int Depth = 0;
+		while (Node != nullptr && Node->GetParent() != nullptr)
+		{
+			++Depth;
+			Node = Node->GetParent();
+		}
+		return Depth;
+	}
+
+	int countSkeletonNodes(FbxNode* Node, const QString& Name)
+	{
+		if (Node == nullptr)
+			return 0;
+		int Count = isSkeletonNode(Node) && fbxObjectName(Node->GetName()) == Name ? 1 : 0;
+		for (int ChildIndex = 0; ChildIndex < Node->GetChildCount(); ++ChildIndex)
+			Count += countSkeletonNodes(Node->GetChild(ChildIndex), Name);
+		return Count;
+	}
+
+	void removeNodeFromPoses(FbxScene* Scene, FbxNode* Node)
+	{
+		if (Scene == nullptr || Node == nullptr)
+			return;
+		for (int PoseIndex = 0; PoseIndex < Scene->GetPoseCount(); ++PoseIndex)
+		{
+			FbxPose* Pose = Scene->GetPose(PoseIndex);
+			if (Pose == nullptr)
+				continue;
+			int EntryIndex = Pose->Find(Node);
+			while (EntryIndex >= 0)
+			{
+				Pose->Remove(EntryIndex);
+				EntryIndex = Pose->Find(Node);
+			}
+		}
+	}
+
+	void appendExactMeshName(QStringList& Names, const QString& SourceName)
+	{
+		QString Name = SourceName.trimmed();
+		if (Name.isEmpty())
+			return;
+		if (!Names.contains(Name))
+			Names.append(Name);
+		if (!Name.endsWith(".Shape", Qt::CaseInsensitive))
+		{
+			QString ShapeName = Name + ".Shape";
+			if (!Names.contains(ShapeName))
+				Names.append(ShapeName);
+		}
+	}
+}
 
 DzUnityForkAction::DzUnityForkAction() :
 	DzBridgeAction(tr("DazToUnity Fork"), tr("Send the selected node to Unity with DazToUnity Fork."))
@@ -63,6 +240,405 @@ DzUnityForkAction::DzUnityForkAction() :
 	icon.addPixmap(basePixmap, QIcon::Normal, QIcon::Off);
 	QAction::setIcon(icon);
 
+}
+
+QStringList DzUnityForkAction::getMainFigureMeshNames()
+{
+	QStringList Names;
+	if (m_pSelectedNode == nullptr)
+		return Names;
+
+	appendExactMeshName(Names, m_pSelectedNode->getName());
+	DzObject* Object = m_pSelectedNode->getObject();
+	if (Object != nullptr && Object->getCurrentShape() != nullptr)
+		appendExactMeshName(Names, Object->getCurrentShape()->getName());
+	return Names;
+}
+
+DzUnityForkAction::FollowerRigConsolidationResult DzUnityForkAction::consolidateFollowerRigs(
+	FbxScene* Scene,
+	const QStringList& MainMeshNames)
+{
+	FollowerRigConsolidationResult Result;
+	Result.Success = true;
+	Result.Changed = false;
+	Result.ClustersRedirected = 0;
+	Result.BonesRemoved = 0;
+
+	if (Scene == nullptr || Scene->GetRootNode() == nullptr)
+	{
+		Result.Success = false;
+		Result.Warnings.append("Follower rig consolidation could not read the FBX scene root.");
+		return Result;
+	}
+
+	QMap<QString, QList<FbxNode*> > SkeletonsByName;
+	QMap<FbxNode*, QList<FollowerClusterUse> > ClusterUsesByBone;
+	QList<FbxNode*> MeshNodes;
+	QList<FbxCluster*> AllClusters;
+	collectSceneData(Scene->GetRootNode(), SkeletonsByName, ClusterUsesByBone, MeshNodes, AllClusters);
+
+	QSet<FbxNode*> MainMeshCandidates;
+	for (int MeshIndex = 0; MeshIndex < MeshNodes.count(); ++MeshIndex)
+	{
+		if (meshNameMatches(MeshNodes[MeshIndex], MainMeshNames))
+			MainMeshCandidates.insert(MeshNodes[MeshIndex]);
+	}
+	if (MainMeshCandidates.count() != 1)
+	{
+		Result.Warnings.append(QString("Follower rig consolidation skipped: expected one exact main figure mesh match, found %1.")
+			.arg(MainMeshCandidates.count()));
+		return Result;
+	}
+	FbxNode* MainMeshNode = *MainMeshCandidates.begin();
+
+	QMap<FbxNode*, FollowerBoneMerge> Merges;
+	QMap<QString, QList<FbxNode*> >::const_iterator GroupIterator = SkeletonsByName.constBegin();
+	for (; GroupIterator != SkeletonsByName.constEnd(); ++GroupIterator)
+	{
+		const QString BoneName = GroupIterator.key();
+		const QList<FbxNode*>& Bones = GroupIterator.value();
+		if (Bones.count() < 2)
+			continue;
+
+		QList<FbxNode*> CanonicalCandidates;
+		for (int BoneIndex = 0; BoneIndex < Bones.count(); ++BoneIndex)
+		{
+			const QList<FollowerClusterUse> Uses = ClusterUsesByBone.value(Bones[BoneIndex]);
+			for (int UseIndex = 0; UseIndex < Uses.count(); ++UseIndex)
+			{
+				if (Uses[UseIndex].MeshNode == MainMeshNode)
+				{
+					CanonicalCandidates.append(Bones[BoneIndex]);
+					break;
+				}
+			}
+		}
+
+		if (CanonicalCandidates.count() != 1)
+		{
+			Result.Warnings.append(QString("Skipped duplicate bone '%1': expected one main-rig candidate, found %2.")
+				.arg(BoneName).arg(CanonicalCandidates.count()));
+			continue;
+		}
+
+		FbxNode* Canonical = CanonicalCandidates.first();
+		QList<FollowerClusterUse> CanonicalUses = ClusterUsesByBone.value(Canonical);
+		bool HasCanonicalBind = false;
+		bool GroupIsSafe = true;
+		QString UnsafeReason;
+		FbxAMatrix CanonicalBindMatrix;
+		for (int UseIndex = 0; UseIndex < CanonicalUses.count(); ++UseIndex)
+		{
+			FollowerClusterUse Use = CanonicalUses[UseIndex];
+			if (Use.MeshNode != MainMeshNode)
+				continue;
+			if (!isSupportedCluster(Use.Cluster))
+			{
+				GroupIsSafe = false;
+				UnsafeReason = "the canonical main-mesh cluster uses an unsupported link mode or associate model";
+				break;
+			}
+			FbxAMatrix BindMatrix;
+			Use.Cluster->GetTransformLinkMatrix(BindMatrix);
+			if (!HasCanonicalBind)
+			{
+				CanonicalBindMatrix = BindMatrix;
+				HasCanonicalBind = true;
+			}
+			else if (!matricesMatch(CanonicalBindMatrix, BindMatrix))
+			{
+				GroupIsSafe = false;
+				UnsafeReason = "canonical main-mesh bind matrices disagree";
+				break;
+			}
+		}
+		if (!HasCanonicalBind)
+		{
+			GroupIsSafe = false;
+			UnsafeReason = "the canonical bone has no main-mesh bind matrix";
+		}
+
+		QList<FollowerBoneMerge> PendingMerges;
+		for (int BoneIndex = 0; GroupIsSafe && BoneIndex < Bones.count(); ++BoneIndex)
+		{
+			FbxNode* Follower = Bones[BoneIndex];
+			if (Follower == Canonical)
+				continue;
+			QList<FollowerClusterUse> Uses = ClusterUsesByBone.value(Follower);
+			if (Uses.isEmpty())
+			{
+				GroupIsSafe = false;
+				UnsafeReason = "a duplicate bone is not linked to a follower skin";
+				break;
+			}
+			for (int UseIndex = 0; UseIndex < Uses.count(); ++UseIndex)
+			{
+				if (Uses[UseIndex].MeshNode == MainMeshNode)
+				{
+					GroupIsSafe = false;
+					UnsafeReason = "more than one duplicate bone is linked to the main mesh";
+					break;
+				}
+				if (!isSupportedCluster(Uses[UseIndex].Cluster))
+				{
+					GroupIsSafe = false;
+					UnsafeReason = "a follower cluster uses an unsupported link mode or associate model";
+					break;
+				}
+			}
+			if (!GroupIsSafe)
+				break;
+
+			FollowerBoneMerge Merge;
+			Merge.BoneName = BoneName;
+			Merge.Follower = Follower;
+			Merge.Canonical = Canonical;
+			Merge.CanonicalBindMatrix = CanonicalBindMatrix;
+			Merge.ClusterUses = Uses;
+			PendingMerges.append(Merge);
+		}
+
+		if (!GroupIsSafe)
+		{
+			Result.Warnings.append(QString("Skipped duplicate bone '%1': %2.").arg(BoneName).arg(UnsafeReason));
+			continue;
+		}
+		for (int MergeIndex = 0; MergeIndex < PendingMerges.count(); ++MergeIndex)
+			Merges.insert(PendingMerges[MergeIndex].Follower, PendingMerges[MergeIndex]);
+	}
+
+	QSet<FbxNode*> RemainingNodes;
+	QMap<FbxNode*, FollowerBoneMerge>::const_iterator MergeIterator = Merges.constBegin();
+	for (; MergeIterator != Merges.constEnd(); ++MergeIterator)
+		RemainingNodes.insert(MergeIterator.key());
+
+	QList<QList<FbxNode*> > SafeComponents;
+	while (!RemainingNodes.isEmpty())
+	{
+		FbxNode* Seed = *RemainingNodes.begin();
+		QList<FbxNode*> Queue;
+		QList<FbxNode*> Component;
+		Queue.append(Seed);
+		RemainingNodes.remove(Seed);
+
+		while (!Queue.isEmpty())
+		{
+			FbxNode* Current = Queue.takeFirst();
+			Component.append(Current);
+			FollowerBoneMerge CurrentMerge = Merges.value(Current);
+
+			QMap<FbxNode*, FollowerBoneMerge>::const_iterator CandidateIterator = Merges.constBegin();
+			for (; CandidateIterator != Merges.constEnd(); ++CandidateIterator)
+			{
+				FbxNode* Candidate = CandidateIterator.key();
+				bool SameGroup = CandidateIterator.value().BoneName == CurrentMerge.BoneName;
+				bool DirectRelative = Candidate == Current->GetParent() || Candidate->GetParent() == Current;
+				if ((SameGroup || DirectRelative) && RemainingNodes.contains(Candidate))
+				{
+					RemainingNodes.remove(Candidate);
+					Queue.append(Candidate);
+				}
+			}
+		}
+
+		bool ComponentIsSafe = true;
+		QString UnsafeReason;
+		for (int NodeIndex = 0; ComponentIsSafe && NodeIndex < Component.count(); ++NodeIndex)
+		{
+			FbxNode* Follower = Component[NodeIndex];
+			FollowerBoneMerge Merge = Merges.value(Follower);
+			FbxNode* FollowerParent = Follower->GetParent();
+			FbxNode* CanonicalParent = Merge.Canonical->GetParent();
+			if (Merges.contains(FollowerParent))
+			{
+				if (Merges.value(FollowerParent).Canonical != CanonicalParent)
+				{
+					ComponentIsSafe = false;
+					UnsafeReason = "the follower and canonical parent mappings disagree";
+				}
+			}
+			else if (FollowerParent != CanonicalParent)
+			{
+				ComponentIsSafe = false;
+				UnsafeReason = "the follower bone has an unmatched parent";
+			}
+
+			for (int ChildIndex = 0; ComponentIsSafe && ChildIndex < Follower->GetChildCount(); ++ChildIndex)
+			{
+				if (!Merges.contains(Follower->GetChild(ChildIndex)))
+				{
+					ComponentIsSafe = false;
+					UnsafeReason = "a follower duplicate has a unique child or attachment";
+				}
+			}
+		}
+
+		if (!ComponentIsSafe)
+		{
+			Result.Warnings.append(QString("Skipped follower rig component [%1]: %2.")
+				.arg(componentNames(Component, Merges)).arg(UnsafeReason));
+			continue;
+		}
+		SafeComponents.append(Component);
+	}
+
+	QMap<QString, int> RedirectedClustersByMesh;
+	QMap<QString, QSet<FbxNode*> > RemovedBonesByMesh;
+	QList<FbxNode*> NodesToRemove;
+	QSet<QString> ChangedBoneNames;
+	for (int ComponentIndex = 0; ComponentIndex < SafeComponents.count(); ++ComponentIndex)
+	{
+		const QList<FbxNode*>& Component = SafeComponents[ComponentIndex];
+		for (int NodeIndex = 0; NodeIndex < Component.count(); ++NodeIndex)
+		{
+			FbxNode* Follower = Component[NodeIndex];
+			FollowerBoneMerge Merge = Merges.value(Follower);
+			NodesToRemove.append(Follower);
+			ChangedBoneNames.insert(Merge.BoneName);
+			for (int UseIndex = 0; UseIndex < Merge.ClusterUses.count(); ++UseIndex)
+			{
+				FollowerClusterUse Use = Merge.ClusterUses[UseIndex];
+				if (!Use.Cluster->DisconnectSrcObject(Follower))
+				{
+					Result.Success = false;
+					Result.Warnings.append(QString("Follower rig consolidation could not disconnect '%1' from its skin cluster; the FBX was not saved.")
+						.arg(Merge.BoneName));
+					return Result;
+				}
+				Use.Cluster->SetLink(Merge.Canonical);
+				Use.Cluster->SetTransformLinkMatrix(Merge.CanonicalBindMatrix);
+				QString MeshName = fbxObjectName(Use.MeshNode->GetName());
+				RedirectedClustersByMesh[MeshName] += 1;
+				RemovedBonesByMesh[MeshName].insert(Follower);
+				++Result.ClustersRedirected;
+			}
+		}
+	}
+
+	if (NodesToRemove.isEmpty())
+		return Result;
+
+	for (int NodeIndex = 0; NodeIndex < NodesToRemove.count(); ++NodeIndex)
+	{
+		FollowerBoneMerge Merge = Merges.value(NodesToRemove[NodeIndex]);
+		for (int UseIndex = 0; UseIndex < Merge.ClusterUses.count(); ++UseIndex)
+		{
+			FbxAMatrix ActualBindMatrix;
+			Merge.ClusterUses[UseIndex].Cluster->GetTransformLinkMatrix(ActualBindMatrix);
+			if (Merge.ClusterUses[UseIndex].Cluster->GetLink() != Merge.Canonical ||
+				!matricesMatch(ActualBindMatrix, Merge.CanonicalBindMatrix))
+			{
+				Result.Success = false;
+				Result.Warnings.append("Follower rig consolidation validation failed after rebinding; the FBX was not saved.");
+				return Result;
+			}
+		}
+	}
+	for (int ClusterIndex = 0; ClusterIndex < AllClusters.count(); ++ClusterIndex)
+	{
+		if (AllClusters[ClusterIndex]->GetLink() == nullptr)
+		{
+			Result.Success = false;
+			Result.Warnings.append("Follower rig consolidation found a skin cluster without a linked bone; the FBX was not saved.");
+			return Result;
+		}
+	}
+
+	Result.BonesRemoved = NodesToRemove.count();
+	while (!NodesToRemove.isEmpty())
+	{
+		int DeepestIndex = 0;
+		int DeepestDepth = nodeDepth(NodesToRemove[0]);
+		for (int NodeIndex = 1; NodeIndex < NodesToRemove.count(); ++NodeIndex)
+		{
+			int Depth = nodeDepth(NodesToRemove[NodeIndex]);
+			if (Depth > DeepestDepth)
+			{
+				DeepestDepth = Depth;
+				DeepestIndex = NodeIndex;
+			}
+		}
+		FbxNode* Node = NodesToRemove.takeAt(DeepestIndex);
+		if (Node->GetChildCount() != 0)
+		{
+			Result.Success = false;
+			Result.Warnings.append("Follower rig consolidation found an unexpected child during node removal; the FBX was not saved.");
+			return Result;
+		}
+		FbxNode* Parent = Node->GetParent();
+		if (Parent != nullptr)
+			Parent->RemoveChild(Node);
+		removeNodeFromPoses(Scene, Node);
+		Node->Destroy();
+	}
+
+	QSet<QString>::const_iterator ChangedNameIterator = ChangedBoneNames.constBegin();
+	for (; ChangedNameIterator != ChangedBoneNames.constEnd(); ++ChangedNameIterator)
+	{
+		if (countSkeletonNodes(Scene->GetRootNode(), *ChangedNameIterator) != 1)
+		{
+			Result.Success = false;
+			Result.Warnings.append(QString("Follower rig consolidation did not leave exactly one '%1' bone; the FBX was not saved.")
+				.arg(*ChangedNameIterator));
+			return Result;
+		}
+	}
+
+	QMap<QString, int>::const_iterator SummaryIterator = RedirectedClustersByMesh.constBegin();
+	for (; SummaryIterator != RedirectedClustersByMesh.constEnd(); ++SummaryIterator)
+	{
+		Result.Summaries.append(QString("Consolidated %1 duplicate bones and redirected %2 skin clusters for '%3'.")
+			.arg(RemovedBonesByMesh.value(SummaryIterator.key()).count())
+			.arg(SummaryIterator.value())
+			.arg(SummaryIterator.key()));
+	}
+	Result.Changed = true;
+	return Result;
+}
+
+bool DzUnityForkAction::consolidateFollowerRigsInFile(const QString& FbxFilePath)
+{
+	OpenFBXInterface* OpenFBX = OpenFBXInterface::GetInterface();
+	FbxScene* Scene = OpenFBX->CreateScene("DazToUnity Follower Rig Consolidation");
+	if (Scene == nullptr || !OpenFBX->LoadScene(Scene, FbxFilePath))
+	{
+		if (Scene != nullptr)
+			Scene->Destroy();
+		if (dzApp != nullptr)
+			dzApp->log("DazToUnity Fork: Could not load FBX for follower rig consolidation: " + FbxFilePath);
+		return false;
+	}
+
+	FollowerRigConsolidationResult Result = consolidateFollowerRigs(Scene, getMainFigureMeshNames());
+	for (int WarningIndex = 0; WarningIndex < Result.Warnings.count(); ++WarningIndex)
+	{
+		if (dzApp != nullptr)
+			dzApp->log("DazToUnity Fork: " + Result.Warnings[WarningIndex]);
+	}
+	for (int SummaryIndex = 0; SummaryIndex < Result.Summaries.count(); ++SummaryIndex)
+	{
+		if (dzApp != nullptr)
+			dzApp->log("DazToUnity Fork: " + Result.Summaries[SummaryIndex]);
+	}
+
+	bool Saved = Result.Success;
+	if (Result.Success && Result.Changed)
+		Saved = OpenFBX->SaveScene(Scene, FbxFilePath);
+	if (!Saved && dzApp != nullptr)
+		dzApp->log("DazToUnity Fork: Follower rig consolidation did not save changes to: " + FbxFilePath);
+	Scene->Destroy();
+	return Saved;
+}
+
+bool DzUnityForkAction::postProcessFbx(QString fbxFilePath)
+{
+	if (m_sAssetType != "SkeletalMesh")
+		return DZ_BRIDGE_NAMESPACE::DzBridgeAction::postProcessFbx(fbxFilePath);
+
+	if (m_bPostProcessFbx && !DZ_BRIDGE_NAMESPACE::DzBridgeAction::postProcessFbx(fbxFilePath))
+		return false;
+	return consolidateFollowerRigsInFile(fbxFilePath);
 }
 
 bool DzUnityForkAction::createUI()
@@ -319,7 +895,19 @@ void DzUnityForkAction::exportNode(DzNode* Node)
 		exportStrandHairAlembic(Node);
 	}
 
+	bool WasExportingBaseMesh = m_bExportingBaseMesh;
 	DZ_BRIDGE_NAMESPACE::DzBridgeAction::exportNode(Node);
+
+	if (WasExportingBaseMesh && m_sAssetType == "SkeletalMesh")
+	{
+		QString BaseFbxPath = m_sDestinationFBX;
+		if (BaseFbxPath.endsWith(".fbx", Qt::CaseInsensitive))
+			BaseFbxPath = BaseFbxPath.left(BaseFbxPath.length() - 4) + "_base.fbx";
+		else
+			BaseFbxPath += "_base.fbx";
+		if (QFileInfo(BaseFbxPath).exists())
+			consolidateFollowerRigsInFile(BaseFbxPath);
+	}
 }
 
 void DzUnityForkAction::discoverStrandHairNodes(DzNode* Node, QList<DzNode*>& HairNodes)

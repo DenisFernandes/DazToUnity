@@ -28,6 +28,11 @@ private:
 	bool setExportOptions(UnitTest::TestResult* testResult);
 	bool createUnityFiles(UnitTest::TestResult* testResult);
 	bool readGuiRootFolder(UnitTest::TestResult* testResult);
+	bool consolidateConnectedFollowerRig(UnitTest::TestResult* testResult);
+	bool preserveFollowerRigWithUniqueChild(UnitTest::TestResult* testResult);
+	bool preserveUnsupportedFollowerCluster(UnitTest::TestResult* testResult);
+	bool preserveAmbiguousCanonicalRig(UnitTest::TestResult* testResult);
+	bool preserveInconsistentCanonicalBindRig(UnitTest::TestResult* testResult);
 
 };
 
