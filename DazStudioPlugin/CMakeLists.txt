@@ -36,6 +36,8 @@ set_property(SOURCE ${DPC_IMAGES_CPP} PROPERTY SKIP_AUTOMOC ON)
 add_library( ${DZ_PLUGIN_TGT_NAME} SHARED
 	DzUnityAction.cpp
 	DzUnityAction.h
+	DzUnityGeograftMorphs.cpp
+	DzUnityGeograftMorphs.h
 	DzUnityDialog.cpp
 	DzUnityDialog.h
 	pluginmain.cpp

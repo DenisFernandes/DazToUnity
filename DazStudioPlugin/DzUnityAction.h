@@ -11,6 +11,7 @@
 #include "DzUnityDialog.h"
 
 class UnitTest_DzUnityAction;
+class DzUnityGeograftMorphs;
 
 #include "dzbridge.h"
 
@@ -70,6 +71,7 @@ protected:
 	 bool m_bRunStrandHairBlenderBake;
 	 QString m_sStrandHairBlenderExecutable;
 	 QList<HairAssetRecord> m_aHairAssets;
+	 DzUnityGeograftMorphs* m_geograftExport;
 
 	 void executeAction();
 	 Q_INVOKABLE bool createUI();
@@ -104,6 +106,7 @@ protected:
 	 HairAssetRecord exportStrandHairNode(DzNode* HairNode);
 	 void writeHairAssets(DzJsonWriter& writer);
 	 QStringList getMainFigureMeshNames();
+	 bool exportGeograftCharacter(DzUnityGeograftMorphs& Export, DzProgress* Progress);
 	 bool consolidateFollowerRigsInFile(const QString& FbxFilePath);
 	 FollowerRigConsolidationResult consolidateFollowerRigs(FbxScene* Scene, const QStringList& MainMeshNames);
 

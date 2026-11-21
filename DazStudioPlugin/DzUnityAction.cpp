@@ -9,6 +9,7 @@
 #include <QtCore/qmap.h>
 #include <QtCore/qpair.h>
 #include <QtCore/qprocess.h>
+#include <QtCore/qscopedvaluerollback.h>
 #include <QtCore/qset.h>
 #include <QtCore/qvariant.h>
 #include <QtGui/qdesktopservices.h>
@@ -40,6 +41,7 @@
 
 #include "DzUnityAction.h"
 #include "DzUnityDialog.h"
+#include "DzUnityGeograftMorphs.h"
 #include "DzBridgeMorphSelectionDialog.h"
 #include "DzBridgeSubdivisionDialog.h"
 #include "OpenFBXInterface.h"
@@ -225,7 +227,8 @@ namespace
 }
 
 DzUnityForkAction::DzUnityForkAction() :
-	DzBridgeAction(tr("DazToUnity Fork"), tr("Send the selected node to Unity with DazToUnity Fork."))
+	DzBridgeAction(tr("DazToUnity Fork"), tr("Send the selected node to Unity with DazToUnity Fork.")),
+	m_geograftExport(nullptr)
 {
 	m_nNonInteractiveMode = 0;
 	m_sAssetType = QString("SkeletalMesh");
@@ -638,7 +641,21 @@ bool DzUnityForkAction::postProcessFbx(QString fbxFilePath)
 
 	if (m_bPostProcessFbx && !DZ_BRIDGE_NAMESPACE::DzBridgeAction::postProcessFbx(fbxFilePath))
 		return false;
-	return consolidateFollowerRigsInFile(fbxFilePath);
+	if (!consolidateFollowerRigsInFile(fbxFilePath))
+		return false;
+	if (m_geograftExport == nullptr)
+		return true;
+
+	OpenFBXInterface* OpenFBX = OpenFBXInterface::GetInterface();
+	FbxScene* Scene = OpenFBX->CreateScene("DazToUnity Graft Blend Shapes");
+	if (Scene == nullptr)
+		return false;
+	const bool Published = OpenFBX->LoadScene(Scene, fbxFilePath) &&
+		m_geograftExport->publish(Scene, getMainFigureMeshNames());
+	Scene->Destroy();
+	if (Published)
+		m_sDestinationFBX = m_geograftExport->destination();
+	return Published;
 }
 
 bool DzUnityForkAction::createUI()
@@ -784,7 +801,11 @@ void DzUnityForkAction::executeAction()
 		DzProgress* exportProgress = new DzProgress("Sending to Unity...", 10);
 
 		// Read Common GUI values
-		readGui(m_bridgeDialog);
+		if (!readGui(m_bridgeDialog))
+		{
+			exportProgress->finish();
+			return;
+		}
 
 		// Read Custom GUI values
 		DzUnityForkDialog* unityDialog = qobject_cast<DzUnityForkDialog*>(m_bridgeDialog);
@@ -816,10 +837,25 @@ void DzUnityForkAction::executeAction()
 		dir.mkpath(m_sRootFolder);
 		exportProgress->step();
 
-		exportHD(exportProgress);
+		bool Exported = true;
+		if (m_sAssetType == "SkeletalMesh" && m_bEnableMorphs)
+		{
+			DzNode* Figure = dzScene->getPrimarySelection();
+			DzUnityGeograftMorphs Grafts(Figure, m_mMorphNameToLabel, m_sDestinationFBX);
+			if (Grafts.isEmpty())
+				exportHD(exportProgress);
+			else
+				Exported = exportGeograftCharacter(Grafts, exportProgress);
+		}
+		else
+		{
+			exportHD(exportProgress);
+		}
 
 		// DB 2021-10-11: Progress Bar
 		exportProgress->finish();
+		if (!Exported)
+			return;
 
 		// DB 2021-09-02: messagebox "Export Complete"
 		if (m_nNonInteractiveMode == 0)
@@ -843,6 +879,33 @@ file located in the Assets\\Daz3D\\Support\\ folder of your Unity Project."), QM
 		}
 
 	}
+}
+
+bool DzUnityForkAction::exportGeograftCharacter(DzUnityGeograftMorphs& Export, DzProgress* Progress)
+{
+	QString Error;
+	if (m_EnableSubdivisions)
+		Error = tr("Turn off Bake Subdivision to export graft presets as blend shapes. This export uses base mesh topology.");
+	else if (!Export.capture())
+		Error = Export.error();
+	else
+	{
+		Progress->setInfo(tr("Exporting the skinned figure and graft blend shapes..."));
+		QScopedValueRollback<DzUnityGeograftMorphs*> RestoreExport(m_geograftExport);
+		QScopedValueRollback<QString> RestoreDestination(m_sDestinationFBX);
+		QScopedValueRollback<bool> RestoreBaseMesh(m_bExportingBaseMesh);
+		m_geograftExport = &Export;
+		m_sDestinationFBX = Export.fbxPath();
+		m_bExportingBaseMesh = false;
+		exportAsset();
+		if (Export.published())
+			return true;
+		Error = Export.error().isEmpty() ? tr("DAZ Studio did not produce a usable FBX for the selected figure.") : Export.error();
+	}
+	dzApp->log("DazToUnity Fork: " + Error);
+	if (m_nNonInteractiveMode == 0)
+		QMessageBox::warning(0, tr("Graft morph export failed"), Error, QMessageBox::Ok);
+	return false;
 }
 
 QString DzUnityForkAction::createUnityFiles(bool replace)
@@ -1615,6 +1678,8 @@ void DzUnityForkAction::writeHairAssets(DzJsonWriter& writer)
 
 void DzUnityForkAction::writeConfiguration()
 {
+	if (m_geograftExport != nullptr && !m_geograftExport->published())
+		return;
 	QString DTUfilename = m_sDestinationPath + m_sExportFilename + ".dtu";
 	QFile DTUfile(DTUfilename);
 	DTUfile.open(QIODevice::WriteOnly);
@@ -1666,7 +1731,17 @@ void DzUnityForkAction::setExportOptions(DzFileIOSettings& ExportOptions)
 	ExportOptions.setBoolValue("doEmbed", false);
 	ExportOptions.setBoolValue("doDiffuseOpacity", false);
 	ExportOptions.setBoolValue("doCopyTextures", false);
-
+	if (m_geograftExport != nullptr)
+	{
+		bool HasNativeMorphs = false;
+		const QString Rules = m_geograftExport->nativeMorphRules(m_sMorphSelectionRule, HasNativeMorphs);
+		ExportOptions.setBoolValue("doMorphs", HasNativeMorphs);
+		ExportOptions.setStringValue("rules", HasNativeMorphs ? Rules : QString());
+		// Capture isolated the selected figure and its visible followers.
+		ExportOptions.setBoolValue("doSelected", false);
+		ExportOptions.setBoolValue("doVisible", true);
+		ExportOptions.setIntValue("RunSilent", 1);
+	}
 }
 
 QString DzUnityForkAction::readGuiRootFolder()
